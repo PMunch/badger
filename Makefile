@@ -1,11 +1,11 @@
-blinky: blinky.nim nim.cfg panicoverride.nim teensy.nim keyboard.nim
-	nim c -d:danger --opt:size --os:standalone blinky
+badger: badger.nim nim.cfg panicoverride.nim teensy.nim keyboard.nim
+	nim c -d:danger --opt:size --os:standalone badger
 
-blinky.hex: blinky
-	avr-objcopy -O ihex -R .eeprom blinky blinky.hex
+badger.hex: badger
+	avr-objcopy -O ihex -R .eeprom badger badger.hex
 
-size: blinky
-	avr-size -C --mcu=atmega32u4 blinky
+size: badger
+	avr-size -C --mcu=atmega32u4 badger
 
-upload: blinky.hex
-	teensy-loader-cli --mcu=TEENSY2 -v -w blinky.hex
+upload: badger.hex
+	teensy-loader-cli --mcu=TEENSY2 -v -w badger.hex
