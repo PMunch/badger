@@ -1,4 +1,4 @@
-blinky: blinky.nim nim.cfg panicoverride.nim
+blinky: blinky.nim nim.cfg panicoverride.nim teensy.nim keyboard.nim
 	nim c -d:danger --opt:size --os:standalone blinky
 
 blinky.hex: blinky
