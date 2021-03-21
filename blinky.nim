@@ -16,29 +16,14 @@ proc main() {.exportc.} =
 
   Led.output()
 
-  columns.eachIt:
-    it.input()
-    it.pullup()
-
-  rows.eachIt:
-    it.input()
-    it.normal()
+  columns.configure(input, pullup)
+  rows.configure(input, pullup)
 
   while true:
-    var col = 0
-    columns.eachIt:
-      it.output()
-      it.low()
-      var row = 0
-      rows.eachIt:
-        it.pullup()
+    for col in withPinAs(columns, output, low):
+      for row in withPinAs(rows, pullup):
         delayMs(2)
-        if it.read() == 0:
+        if row.readPin() == 0:
           discard usbKeyboardPress(colKeys[col], 0)
           discard usbKeyboardPress(rowKeys[row], 0)
           discard usbKeyboardPress(KeySpace, 0)
-        it.normal()
-        inc row
-      it.input()
-      it.pullup()
-      inc col

@@ -1,4 +1,4 @@
-import macros
+import macros, tables
 
 {.push nodecl, header: "<avr/io.h>".}
 var
@@ -107,5 +107,93 @@ macro read*(pin: static[Pin]): untyped =
   expandPin("pin")
   quote do:
     `port` and (1'u8 shl `num`)
+
+macro configure*(pins: static[openarray[Pin]], states: varargs[untyped]): untyped =
+  result = newStmtList()
+  var ports: Table[char, seq[int]]
+  for pin in pins:
+    ports.mgetOrPut(pin.port, @[]).add pin.num
+  for state in states:
+    expectKind state, nnkIdent
+    for portName, pins in ports.pairs:
+      var valueMask = newLit(0)
+      for pin in pins:
+        valueMask = quote do:
+          `valueMask` or (1'u8 shl `pin`)
+      case state.strVal:
+      of "input":
+        let port = newIdentNode("ddr" & $portName)
+        result.add quote do:
+          `port` = `port` and not `valueMask`
+      of "output":
+        let port = newIdentNode("ddr" & $portName)
+        result.add quote do:
+          `port` = `port` or `valueMask`
+      of "pullup":
+        let port = newIdentNode("port" & $portName)
+        result.add quote do:
+          `port` = `port` or `valueMask`
+      of "normal":
+        let port = newIdentNode("port" & $portName)
+        result.add quote do:
+          `port` = `port` and not `valueMask`
+      of "high":
+        let port = newIdentNode("port" & $portName)
+        result.add quote do:
+          `port` = `port` or `valueMask`
+      of "low":
+        let port = newIdentNode("port" & $portName)
+        result.add quote do:
+          `port` = `port` and not `valueMask`
+      else: doAssert state.strVal in ["input", "output", "pullup", "normal", "high", "low"]
+  #echo result.repr
+
+macro generateCaseStmt(pins: static[openarray[Pin]], pinsname: untyped, iterVar: untyped, states: varargs[untyped]): untyped =
+  result = quote do:
+    case range[0..`pinsname`.high](`iterVar`):
+    else: discard
+  result.del 1
+  for i in 0..pins.high:
+    var body = newStmtList()
+    for state in states:
+      body.add quote do:
+        `state`(`pinsname`[`i`])
+    result.add nnkOfBranch.newTree(newLit(i), body)
+  #echo result.repr
+
+macro withPinAs*(loop: ForLoopStmt): untyped =
+  expectKind loop, nnkForStmt
+  let
+    iterVar = loop[0]
+    pins = loop[1][1]
+    states = loop[1][2..^1]
+    body = loop[2]
+    iterVarType = genSym(nskType)
+  var
+    generateSym = bindSym("generateCaseStmt")
+    generateInStmt = nnkCall.newTree(generateSym, pins, pins, iterVar)
+    generateOutStmt = nnkCall.newTree(generateSym, pins, pins, iterVar)
+    generateReadStmt = nnkCall.newTree(generateSym, pins, pins, iterVar, newIdentNode("read"))
+  for state in states:
+    generateInStmt.add state
+    generateOutStmt.add:
+      case state.strVal:
+      of "input": newIdentNode("output")
+      of "output": newIdentNode("input")
+      of "pullup": newIdentNode("normal")
+      of "normal": newIdentNode("pullup")
+      of "high": newIdentNode("low")
+      of "low": newIdentNode("high")
+      else: newIdentNode("error")
+  result = quote do:
+    type `iterVarType` = int
+    for i in 0..`pins`.high:
+      let `iterVar` = `iterVarType`(i)
+      template readPin(_: `iterVarType`): untyped {.used.} =
+        `generateReadStmt`
+      `generateInStmt`
+      `body`
+      `generateOutStmt`
+  #echo result.repr
 
 proc delayMs*(ms: cdouble) {.importc: "_delay_ms", header: "<avr/delay.h>".}
