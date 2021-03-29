@@ -30,12 +30,12 @@ type
     KEY_RIGHT_CTRL = 0x10, KEY_RIGHT_SHIFT = 0x20, KEY_RIGHT_ALT = 0x40,
     KEY_RIGHT_GUI = 0x80
 
-template KEY_LEFT_CTRL(): untyped = KEY_CTRL
-template KEY_LEFT_SHIFT(): untyped = KEY_SHIFT
-template KEY_LEFT_ALT(): untyped = KEY_ALT
-template KEY_LEFT_GUP(): untyped = KEY_GUP
+template KEY_LEFT_CTRL*(): untyped = KEY_CTRL
+template KEY_LEFT_SHIFT*(): untyped = KEY_SHIFT
+template KEY_LEFT_ALT*(): untyped = KEY_ALT
+template KEY_LEFT_GUI*(): untyped = KEY_GUP
 
-proc `or`(x, y: Modifiers): Modifiers = Modifiers(x.uint8 or y.uint8)
+proc `or`*(x, y: Modifiers): Modifiers = Modifiers(x.uint8 or y.uint8)
 
 proc usbInit*() {.importc: "usb_init".}
 proc usbConfigured*(): uint8 {.importc: "usb_configured".}
