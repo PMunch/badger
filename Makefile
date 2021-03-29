@@ -1,5 +1,5 @@
-badger: badger.nim nim.cfg panicoverride.nim teensy.nim keyboard.nim
-	nim c -d:danger --opt:size --os:standalone badger
+badger: badger.nim nim.cfg panicoverride.nim teensy.nim keyboard.nim pgmspace.nim
+	nim c -d:danger --opt:size --os:any badger
 
 badger.hex: badger
 	avr-objcopy -O ihex -R .eeprom badger badger.hex
