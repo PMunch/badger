@@ -12,19 +12,15 @@ template `[]`*[N, T](data: Progmem[array[N, T]], idx: int): untyped =
   pgmReadByte(array[N, T](data)[idx].unsafeAddr)
 
 macro progmem*(definitions: untyped): untyped =
-  result = nnkLetSection.newTree()
+  result = newStmtList()
   for definition in definitions:
-    let data = definition[1]
-    result.add nnkIdentDefs.newTree(
-        nnkPragmaExpr.newTree(
-          definition[0],
-          nnkPragma.newTree(nnkExprColonExpr.newTree(
-              newIdentNode("codegenDecl"),
-              newLit("N_LIB_PRIVATE NIM_CONST $# PROGMEM $#")
-            ))),
-        newEmptyNode(),
-        quote do:
-          Progmem(`data`)
-        )
-  echo result.repr
+    let
+      hiddenName = genSym(nskLet)
+      name = definition[0]
+      data = definition[1]
+    result.add quote do:
+      # Stupid workaround for https://github.com/nim-lang/Nim/issues/17497
+      let `hiddenName` {.codegenDecl: "N_LIB_PRIVATE NIM_CONST $# PROGMEM $#".} = `data`
+      template `name`(): untyped = Progmem(`hiddenName`)
+  #echo result.repr
 {.pop.}
