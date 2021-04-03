@@ -1,16 +1,43 @@
-import teensy, keyboard, pgmspace
+import teensy, pgmspace, mappings/dvorak, layouts
 
 const
-  rows = [D0, D1, D2, D3, C6, C7, D5]
-  columns = [B0, B1, B2, B3, B7]
+  columns = [D5, C7, C6, D3, D2, D1, D0]
+  rows = [B7, B3, B2, B1, B0]
 
-progmem:
-  rowKeys = [KeyA, KeyS, KeyD, KeyF, KeyG, KeyH, KeyJ]
-  colKeys = [Key0, Key1, Key2, Key3, Key4]
-  layout = [KEY_A, KEY_B, KEY_C, KEY_D, KEY_E, KEY_F, KEY_G,
-    KEY_H, KEY_I, KEY_J, KEY_K, KEY_L, KEY_M, KEY_N, KEY_O, KEY_P, KEY_Q,
-    KEY_R, KEY_S, KEY_T, KEY_U, KEY_V, KEY_W, KEY_X, KEY_Y, KEY_Z, KEY_1,
-    KEY_2, KEY_BACKSPACE, KEY_4, KEY_5, KEY_6, KEY_7, KEY_8, KEY_9]
+template myKey(): untyped =
+  when defined(something):
+    KEY_C
+  else:
+    KEY_P
+
+const MyKey = KEY_OSLASH
+
+proc runCopy() =
+  discard usbKeyboardPress(KEY_C, KEY_CTRL)
+
+proc typeAs(times: int) =
+  for i in 0..<times:
+    discard usbKeyboardPress(KEY_A, KEY_NONE)
+  discard usbKeyboardPress(KEY_SPACE, KEY_NONE)
+
+var layout = 0
+
+proc switchLayout(l: int) =
+  layout = l
+
+createLayout(layout1):
+  Æ         B C D       E               F         Backspace
+  Ø         I J MyKey   L               M         N
+  Å         P Q myKey() S               T         U
+  V         W X Y       Z               1         2
+  runCopy() 4 5 6       switchLayout(1) typeAs(3) typeAs(5)
+
+createLayout(layout2):
+  Q         P E T       E               R         Backspace
+  H         I J MyKey   L               M         N
+  O         P Q myKey() S               T         U
+  V         W X Y       Z               1         2
+  runCopy() 4 5 6       switchLayout(0) typeAs(1) typeAs(7)
 
 proc main() {.exportc.} =
   cpuPrescale(0)
@@ -20,19 +47,23 @@ proc main() {.exportc.} =
 
   delayMs(1000)
 
-  Led.output()
-
-  columns.configure(input, pullup)
   rows.configure(input, pullup)
+  columns.configure(input, pullup)
 
   while true:
     var i = 0
     reset keyboardKeys
-    for col in withPinAs(columns, output, low):
-      for row in withPinAs(rows, pullup):
-        delayMs(2)
-        if row.readPin() == 0:
+    for row in withPinAs(rows, output, low):
+      for col in withPinAs(columns, pullup):
+        delayLoop(1'u8)
+        if col.readPin() == 0:
           if i < 6:
-            keyboardKeys[i] = layout[col*rows.len + row]
+            let key = case range[0..1](layout):
+            of 0: layout1[row*columns.len + col]
+            of 1: layout2[row*columns.len + col]
+            if key.uint8 > 231:
+              layoutCallback(key)
+            else:
+              keyboardKeys[i] = key
             inc i
     discard usbKeyboardSend()
