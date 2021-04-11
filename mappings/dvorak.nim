@@ -1,6 +1,7 @@
 type
   Key* = enum
-    KEY_A = 4'u8, KEY_X = 5, KEY_J = 6, KEY_E = 7, KEY_PERIOD = 8, KEY_U = 9, KEY_I = 10
+    KEY_NONE = 0'u8,
+    KEY_A = 4, KEY_X = 5, KEY_J = 6, KEY_E = 7, KEY_PERIOD = 8, KEY_U = 9, KEY_I = 10
     KEY_D = 11, KEY_C = 12, KEY_H = 13, KEY_T = 14, KEY_N = 15, KEY_M = 16,
     KEY_B = 17, KEY_R = 18, KEY_L = 19, KEY_ARING = 20, KEY_P = 21, KEY_O = 22,
     KEY_Y = 23, KEY_G = 24, KEY_K = 25, KEY_COMMA = 26, KEY_Q = 27, KEY_F = 28,
@@ -29,19 +30,35 @@ type
     CALLBACK_6 = 237
     CALLBACK_7 = 238
     CALLBACK_8 = 239
+    CALLBACK_9 = 240
+    CALLBACK_10 = 241
+    CALLBACK_11 = 242
+    CALLBACK_12 = 243
+    CALLBACK_13 = 244
+    CALLBACK_14 = 245
+    CALLBACK_15 = 246
+    CALLBACK_16 = 247
+    CALLBACK_17 = 248
+    CALLBACK_18 = 249
+    CALLBACK_19 = 250
+    CALLBACK_20 = 251
+    CALLBACK_21 = 252
+    CALLBACK_22 = 253
+    CALLBACK_23 = 254
+    CALLBACK_24 = 255
   Modifiers* = enum
-    KEY_NONE = 0x0,
-    KEY_CTRL = 0x01, KEY_SHIFT = 0x02, KEY_ALT = 0x04, KEY_GUI = 0x08,
-    KEY_RIGHT_CTRL = 0x10, KEY_RIGHT_SHIFT = 0x20, KEY_RIGHT_ALT = 0x40,
-    KEY_RIGHT_GUI = 0x80
+    MOD_NONE = 0x0'u8,
+    MOD_CTRL = 0x01, MOD_SHIFT = 0x02, MOD_ALT = 0x04, MOD_GUI = 0x08,
+    MOD_RIGHT_CTRL = 0x10, MOD_RIGHT_SHIFT = 0x20, MOD_RIGHT_ALT = 0x40,
+    MOD_RIGHT_GUI = 0x80
 
-template KEY_LEFT_CTRL*(): untyped = KEY_CTRL
-template KEY_LEFT_SHIFT*(): untyped = KEY_SHIFT
-template KEY_LEFT_ALT*(): untyped = KEY_ALT
-template KEY_LEFT_GUI*(): untyped = KEY_GUP
+template MOD_LEFT_CTRL*(): untyped = MOD_CTRL
+template MOD_LEFT_SHIFT*(): untyped = MOD_SHIFT
+template MOD_LEFT_ALT*(): untyped = MOD_ALT
+template MOD_LEFT_GUI*(): untyped = MOD_GUP
 
 template KEY_Å*(): untyped = KEY_ARING
 template KEY_Æ*(): untyped = KEY_AE
 template KEY_Ø*(): untyped = KEY_OSLASH
 
-include "../keyboard"
+template `or`*(x, y: Modifiers): Modifiers = Modifiers(x.uint8 or y.uint8)

@@ -25,14 +25,27 @@ template `[]`*[N, T](data: Progmem[array[N, T]], idx: int): untyped =
   read(Progmem(array[N, T](data)[idx]))
 
 macro progmem*(definitions: untyped): untyped =
+  #echo definitions.treeRepr
   result = newStmtList()
   for definition in definitions:
-    let
-      hiddenName = genSym(nskLet)
+    var
+      hiddenName: NimNode
+      name: NimNode
+      data: NimNode
+      dataType = newIdentNode("auto")
+    case definition.kind:
+    of nnkAsgn:
+      hiddenName = genSym(nskLet, definition[0].strVal)
       name = definition[0]
       data = definition[1]
+    of nnkCall:
+      hiddenName = genSym(nskLet, definition[0].strVal)
+      name = definition[0]
+      dataType = definition[1][0][0]
+      data = definition[1][0][1]
+    else: discard
     result.add quote do:
       # Stupid workaround for https://github.com/nim-lang/Nim/issues/17497
-      let `hiddenName` {.codegenDecl: "N_LIB_PRIVATE NIM_CONST $# PROGMEM $#".} = `data`
+      let `hiddenName` {.codegenDecl: "N_LIB_PRIVATE NIM_CONST $# PROGMEM $#".}: `dataType` = `data`
       template `name`*(): untyped = Progmem(`hiddenName`)
   #echo result.repr

@@ -1,4 +1,4 @@
-import teensy, pgmspace, mappings/dvorak, layouts
+import teensy, pgmspace, mappings/dvorak, layouts, usbKeyboard
 
 const
   columns = [D5, C7, C6, D3, D2, D1, D0]
@@ -13,23 +13,26 @@ template myKey(): untyped =
 const MyKey = KEY_OSLASH
 
 proc runCopy() =
-  discard usbKeyboardPress(KEY_C, KEY_CTRL)
+  discard usbKeyboardPress(KEY_C, MOD_CTRL)
 
 proc typeAs(times: int) =
   for i in 0..<times:
-    discard usbKeyboardPress(KEY_A, KEY_NONE)
-  discard usbKeyboardPress(KEY_SPACE, KEY_NONE)
+    discard usbKeyboardPress(KEY_A, MOD_NONE)
+  discard usbKeyboardPress(KEY_SPACE, MOD_NONE)
 
-var layout = 0
+var layout: uint8 = 0
 
-proc switchLayout(l: int) =
+proc switchLayout(l: uint8) =
   layout = l
+
+proc setModifier(m: Modifiers) {.noinline.} =
+  keyboardModifierKeys = keyboardModifierKeys or m
 
 createLayout(layout1):
   Æ         B C D       E               F         Backspace
-  Ø         I J MyKey   L               M         N
-  Å         P Q myKey() S               T         U
-  V         W X Y       Z               1         2
+  Ø         I J MyKey   L               M         MOD_ALT.setModifier()
+  Å         P Q myKey() S               T         MOD_CTRL.setModifier()
+  V         W X Y       Z               1         MOD_SHIFT.setModifier()
   runCopy() 4 5 6       switchLayout(1) typeAs(3) typeAs(5)
 
 createLayout(layout2):
@@ -53,6 +56,7 @@ proc main() {.exportc.} =
   while true:
     var i = 0
     reset keyboardKeys
+    reset keyboardModifierKeys
     for row in withPinAs(rows, output, low):
       for col in withPinAs(columns, pullup):
         delayLoop(1'u8)

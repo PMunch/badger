@@ -5,16 +5,21 @@ var
   callbacks {.compileTime.}: seq[NimNode]
 
 macro expandKey(key: typed): untyped =
-  echo key.treeRepr
-  if key.kind == nnkCall:
-    let typeImpl = key[0].getTypeImpl
-    if typeImpl.kind == nnkProcTy:
-      inc callbackId
-      callbacks.add key
-      quote do:
-        Key(`callbackId`)
-    else:
-      key
+  #echo key.treeRepr
+  #if key.kind == nnkCall:
+  #  let typeImpl = key[0].getTypeImpl
+  #  if typeImpl.kind == nnkProcTy:
+  #    inc callbackId
+  #    callbacks.add key
+  #    quote do:
+  #      Key(`callbackId`)
+  #  else:
+  #    key
+  if key.kind != nnkSym:
+    inc callbackId
+    callbacks.add key
+    quote do:
+      Key(`callbackId`)
   else:
     key
 
@@ -32,7 +37,7 @@ macro layoutCallback*(key: untyped): untyped =
   #result.del 1
   for i, callback in callbacks:
     result.add nnkOfBranch.newTree(newLit(232 + i), callback)
-  echo result.repr
+  #echo result.repr
 
 macro createLayout*(name: untyped, x: untyped): untyped =
   let startCallbacks = callbackId
@@ -40,7 +45,7 @@ macro createLayout*(name: untyped, x: untyped): untyped =
   #echo x.treeRepr
   var keys = nnkBracket.newTree()
   proc addKey(key: NimNode) =
-    echo key.treeRepr
+    #echo key.treeRepr
     if key.kind == nnkIdent:
       let keySym = newIdentNode("KEY_" & key.strVal)
       keys.add quote do:
@@ -62,4 +67,4 @@ macro createLayout*(name: untyped, x: untyped): untyped =
     progmem:
       `name` = `keys`
     #generateCallbacks(`startCallbacks`)
-  echo result.repr
+  #echo result.repr
