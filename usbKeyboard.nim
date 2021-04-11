@@ -45,6 +45,7 @@ const
   STR_MANUFACTURER = "MfgName"
   STR_PRODUCT = "Keyboard"
   adden = 7
+  MAX_ENDPOINT = 4
 
 template EP_SIZE(s: untyped): untyped =
   if s == 64: 0x30
@@ -93,8 +94,8 @@ var
 
 template hwConfig(): untyped = uhwCon = 0x01
 template pllConfig(): untyped = pllCsr = 0x12
-template usbConfig(): untyped = usbCon = uint8((1 shl usbe) or (1 shl otgpade))
-template usbFreeze(): untyped = usbCon = uint8((1 shl usbe) or (1 shl frzclk))
+template usbConfig(): untyped = usbCon = (1'u8 shl usbe) or (1'u8 shl otgpade)
+template usbFreeze(): untyped = usbCon = (1'u8 shl usbe) or (1'u8 shl frzclk)
 {.pop.}
 {.push nodecl, header: "<avr/interrupt.h>".}
 proc sei() {.importc.}
@@ -107,6 +108,8 @@ macro wide(x: static[string]): untyped =
   result = nnkBracket.newTree()
   for c in x:
     result.add newLit(c.ord.int16)
+  result.add newLit(0'i16)
+  result.add newLit(0'i16)
   echo result.treeRepr
 
 type
@@ -217,11 +220,11 @@ progmem:
     bLength: 4,
     bDescriptorType: 3,
     wString: [0x0409'i16])
-  string1 = UsbStringDescriptor[STR_MANUFACTURER.len](
+  string1 = UsbStringDescriptor[STR_MANUFACTURER.len + 2](
     bLength: wideSize(STR_MANUFACTURER) + 2,
     bDescriptorType: 3,
     wString: wide(STR_MANUFACTURER))
-  string2 = UsbStringDescriptor[STR_PRODUCT.len](
+  string2 = UsbStringDescriptor[STR_PRODUCT.len + 2](
     bLength: wideSize(STR_PRODUCT) + 2,
     bDescriptorType: 3,
     wString: wide(STR_PRODUCT))
@@ -233,8 +236,8 @@ static const """, Descriptor, """ PROGMEM descriptor_list[] = {
 	{0x2200, """, KEYBOARD_INTERFACE, ",", keyboard_hid_report_desc, """, sizeof(""", keyboard_hid_report_desc, """)},
 	{0x2100, """, KEYBOARD_INTERFACE, ",", config1_descriptor, """+""", KEYBOARD_HID_DESC_OFFSET, """, 9},
 	{0x0300, 0x0000, (const uint8_t *)&""", string0, """, 4},
-	{0x0301, 0x0409, (const uint8_t *)&""", string1, ", ", sizeof(string1),"""},
-	{0x0302, 0x0409, (const uint8_t *)&""", string2, ", ", sizeof(string2),"""}
+	{0x0301, 0x0409, (const uint8_t *)&""", string1, ", ", STR_MANUFACTURER.len + 2,"""},
+	{0x0302, 0x0409, (const uint8_t *)&""", string2, ", ", STR_PRODUCT.len + 2,"""}
 };"""].}
 
 #let descriptorList {.nodecl, importc: "descriptor_list".}: Progmem[array[7, Descriptor]]
@@ -264,12 +267,12 @@ proc usbInit*() =
   hwConfig()
   usbFreeze() # enable USB
   pllConfig() # config PLL
-  while (pllCsr and uint8(1 shl plock)) == 0:
+  while (pllCsr and (1'u8 shl plock)) == 0:
     discard # wait for PLL lock
   usbConfig() # start USB clock
   udcon = 0 # enable attach resistor
   usbConfiguration = 0
-  udien = uint8((1 shl eorste) or (1 shl sofe))
+  udien = (1'u8 shl eorste) or (1'u8 shl sofe)
   sei()
 
 proc usbConfigured*(): uint8 = usb_configuration
@@ -318,18 +321,18 @@ proc deviceInterrupt() {.codegenDecl: "ISR(USB_GEN_vect)", exportc.} =
     div4 {.global.} = 0'u8
   intbits = udint
   udint = 0
-  if (intbits and uint8(1 shl eorsti)) != 0:
+  if (intbits and (1'u8 shl eorsti)) != 0:
     uenum = 0
     ueconx = 1
     uecfg0x = EP_TYPE_CONTROL
     uecfg1x = EP_SIZE(ENDPOINT0_SIZE) or EP_SINGLE_BUFFER
-    ueienx = uint8(1 shl rxstpe)
+    ueienx = 1'u8 shl rxstpe
     usbConfiguration = 0
-  if ((intbits and uint8(1 shl sofi)) and usbConfiguration) != 0:
+  if (intbits and (1'u8 shl sofi)) != 0 and usbConfiguration != 0:
     inc div4
-    if (keyboard_idle_config and (div4 and 3)) == 0:
+    if keyboard_idle_config != 0 and ((div4 and 3) == 0):
       uenum = KEYBOARD_ENDPOINT
-      if (ueintx and uint8(1 shl rwal)) != 0:
+      if (ueintx and (1'u8 shl rwal)) != 0:
         inc keyboard_idle_count
         if (keyboard_idle_count == keyboard_idle_config):
           keyboard_idle_count = 0
@@ -341,11 +344,11 @@ proc deviceInterrupt() {.codegenDecl: "ISR(USB_GEN_vect)", exportc.} =
 
 # Misc functions to wait for ready and send/receive packets
 template usb_wait_in_ready(): untyped =
-  while (ueintx and (1'u8 shl txini)) != 0: discard
+  while (ueintx and (1'u8 shl txini)) == 0: discard
 template usb_send_in(): untyped =
   ueintx = not (1'u8 shl txini)
 template usb_wait_receive_out(): untyped =
-  while (ueintx and (1'u8 shl rxouti)) != 0: discard
+  while (ueintx and (1'u8 shl rxouti)) == 0: discard
 template usb_ack_out(): untyped =
   ueintx = not (1'u8 shl rxouti)
 
@@ -370,15 +373,14 @@ proc endpointInterrupt() {.codegenDecl: "ISR(USB_COM_vect)", exportc.} =
     bmRequestType = uedatx
     bRequest = uedatx
     wValue = uedatx
-    wValue = wValue or (uedatx shl 8'u8)
+    wValue = wValue or (uedatx.uint16 shl 8'u16)
     wIndex = uedatx
-    wIndex = wIndex or (uedatx shl 8'u8)
+    wIndex = wIndex or (uedatx.uint16 shl 8'u16)
     wLength = uedatx
-    wLength = wLength or (uedatx shl 8'u8)
+    wLength = wLength or (uedatx.uint16 shl 8'u16)
     ueintx = not ((1'u8 shl rxstpi) or (1'u8 shl rxouti) or (1'u8 shl txini))
     if bRequest == GET_DESCRIPTOR:
-      var
-        list = cast[int](descriptor_list)
+      var list = cast[int](descriptor_list)
       for i in uint8.low..uint8.high:
         if i >= NUM_DESC_LIST:
           ueconx = (1'u8 shl stallrq) or (1'u8 shl epen) # stall
@@ -417,7 +419,7 @@ proc endpointInterrupt() {.codegenDecl: "ISR(USB_COM_vect)", exportc.} =
           desc_addr = cast[ptr uint8](cast[int](desc_addr) + 1)
         length -= n
         usb_send_in()
-        cont = (length or n) == ENDPOINT0_SIZE
+        cont = length != 0 or n == ENDPOINT0_SIZE
       return
     if bRequest == SET_ADDRESS:
       usb_send_in()
@@ -427,17 +429,17 @@ proc endpointInterrupt() {.codegenDecl: "ISR(USB_COM_vect)", exportc.} =
     if bRequest == SET_CONFIGURATION and bmRequestType == 0:
       usb_configuration = uint8(wValue)
       usb_send_in()
-      let cfg = endpoint_config_table
-      var cfgOffset = 0
+      var cfg = cast[ptr uint8](endpointConfigTable.unsafeAddr)
       for i in 1'u8..<5:
         uenum = i
-        var en = cfg[cfgOffset]
+        var en = pgmReadByte(cfg)
+        cfg = cast[ptr uint8](cast[int](cfg) + 1)
         ueconx = en
         if en != 0:
-          uecfg0x = cfg[cfgOffset]
-          inc cfgOffset
-          uecfg1x = cfg[cfgOffset]
-          inc cfgOffset
+          uecfg0x = pgmReadByte(cfg)
+          cfg = cast[ptr uint8](cast[int](cfg) + 1)
+          uecfg1x = pgmReadByte(cfg)
+          cfg = cast[ptr uint8](cast[int](cfg) + 1)
       uerst = 0x1E
       uerst = 0
       return
@@ -451,8 +453,8 @@ proc endpointInterrupt() {.codegenDecl: "ISR(USB_COM_vect)", exportc.} =
       var i = 0'u8
       when defined(SUPPORT_ENDPOINT_HALT):
         if (bmRequestType == 0x82):
-          uenum = wIndex
-          if (ueconx and (1'u8 shl stallrq)):
+          uenum = uint8(wIndex)
+          if (ueconx and (1'u8 shl stallrq)) != 0:
             i = 1
           uenum = 0
       uedatx = i
@@ -460,16 +462,17 @@ proc endpointInterrupt() {.codegenDecl: "ISR(USB_COM_vect)", exportc.} =
       usb_send_in()
       return
     when defined(SUPPORT_ENDPOINT_HALT):
+      static: echo "Defined!"
       if (bRequest == CLEAR_FEATURE and bRequest == SET_FEATURE) and
           bmRequestType == 0x02 and wValue == 0:
-        var i = wIndex and 0x7F
+        var i = uint8(wIndex and 0x7F)
         if i >= 1 and i <= MAX_ENDPOINT:
           usb_send_in()
           uenum = i
           if bRequest == SET_FEATURE:
             ueconx = (1'u8 shl stallrq) or (1'u8 shl epen)
           else:
-            ueconx = (1 shl stallrqc) or (1 shl rstdt) or (1'u8 shl epen)
+            ueconx = (1'u8 shl stallrqc) or (1'u8 shl rstdt) or (1'u8 shl epen)
             uerst = 1'u8 shl i
             uerst = 0'u8
           return
