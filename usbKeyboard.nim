@@ -1,6 +1,5 @@
 import mappings/dvorak
 import pgmspace, macros
-{.emit: "#include <avr/pgmspace.h>".}
 
 const
   VENDOR_ID = 0x16C0
@@ -55,6 +54,29 @@ template EP_SIZE(s: untyped): untyped =
 
 template LSB(n: untyped): untyped = n and 255
 template MSB(n: untyped): untyped = (n shr 8) and 255
+
+template expandFlags(flags: untyped): untyped =
+  var flagCollection {.inject.} = newLit(0'u8)
+  for flag in flags:
+    flagCollection = nnkInfix.newTree(newIdentNode("or"),
+      flagCollection, nnkInfix.newTree(newIdentNode("shl"), newLit(1'u8), flag))
+  #echo flagCollection.repr
+
+macro check(x: uint8, flags: varargs[untyped]): untyped =
+  expandFlags(flags)
+  quote do:
+    (`x` and (`flagCollection`)) != 0
+
+macro set(x: uint8, flags: varargs[untyped]): untyped =
+  expandFlags(flags)
+  quote do:
+    `x` = `flagCollection`
+
+macro unset(x: uint8, flags: varargs[untyped]): untyped =
+  expandFlags(flags)
+  quote do:
+    `x` = not `flagCollection`
+
 {.push nodecl, header: "<avr/io.h>".}
 var
   uhwCon {.importc: "UHWCON".}: uint8
@@ -94,8 +116,8 @@ var
 
 template hwConfig(): untyped = uhwCon = 0x01
 template pllConfig(): untyped = pllCsr = 0x12
-template usbConfig(): untyped = usbCon = (1'u8 shl usbe) or (1'u8 shl otgpade)
-template usbFreeze(): untyped = usbCon = (1'u8 shl usbe) or (1'u8 shl frzclk)
+template usbConfig(): untyped = usbCon.set usbe, otgpade
+template usbFreeze(): untyped = usbCon.set usbe, frzclk
 {.pop.}
 {.push nodecl, header: "<avr/interrupt.h>".}
 proc sei() {.importc.}
@@ -108,20 +130,19 @@ macro wide(x: static[string]): untyped =
   result = nnkBracket.newTree()
   for c in x:
     result.add newLit(c.ord.int16)
-  result.add newLit(0'i16)
-  result.add newLit(0'i16)
-  echo result.treeRepr
 
 type
   UsbStringDescriptor[N: static[int]] = object
     bLength: uint8
     bDescriptorType: uint8
     wString: array[N, int16]
-  Descriptor = object
+  Descriptor {.packed.} = object
     wValue: uint16
     wIndex: uint16
-    address: pointer
+    address: ptr uint8
     length: uint8
+
+createFieldReaders(Descriptor)
 
 #template descriptor(wValuei, wIndexi: uint16, addressi: Progmem, lengthi: int): Descriptor =
 #  Descriptor(wValue: wValuei, wIndex: wIndexi, address: cast[pointer](addressi.unsafeAddr), length: uint8(lengthi))
@@ -220,14 +241,20 @@ progmem:
     bLength: 4,
     bDescriptorType: 3,
     wString: [0x0409'i16])
-  string1 = UsbStringDescriptor[STR_MANUFACTURER.len + 2](
+  string1 = UsbStringDescriptor[STR_MANUFACTURER.len](
     bLength: wideSize(STR_MANUFACTURER) + 2,
     bDescriptorType: 3,
     wString: wide(STR_MANUFACTURER))
-  string2 = UsbStringDescriptor[STR_PRODUCT.len + 2](
+  string2 = UsbStringDescriptor[STR_PRODUCT.len](
     bLength: wideSize(STR_PRODUCT) + 2,
     bDescriptorType: 3,
     wString: wide(STR_PRODUCT))
+#  testDescriptor = Descriptor(wValue: 0x0100, wIndex: 0x0000, address: nil, length: 0)
+#
+#template wIndex2(x: Progmem[Descriptor]): Progmem[uint16] =
+#  Progmem[uint16](cast[int](x.unsafeAddr) + Descriptor.offsetof(wIndex))
+#
+#let test {.exportc.} = testDescriptor.wIndex2
 
 {.emit:["""/*VARSECTION*/
 static const """, Descriptor, """ PROGMEM descriptor_list[] = {
@@ -240,9 +267,9 @@ static const """, Descriptor, """ PROGMEM descriptor_list[] = {
 	{0x0302, 0x0409, (const uint8_t *)&""", string2, ", ", STR_PRODUCT.len + 2,"""}
 };"""].}
 
-#let descriptorList {.nodecl, importc: "descriptor_list".}: Progmem[array[7, Descriptor]]
-let descriptorList {.nodecl, importc: "descriptor_list".}: pointer
 const NUM_DESC_LIST = 7
+let descriptorList {.nodecl, importc: "descriptor_list".}: Progmem[array[NUM_DESC_LIST, Descriptor]]
+#let descriptorList {.nodecl, importc: "descriptor_list".}: pointer
 
 var
   # which modifier keys are currently pressed
@@ -267,12 +294,12 @@ proc usbInit*() =
   hwConfig()
   usbFreeze() # enable USB
   pllConfig() # config PLL
-  while (pllCsr and (1'u8 shl plock)) == 0:
+  while not pllCsr.check plock:
     discard # wait for PLL lock
   usbConfig() # start USB clock
   udcon = 0 # enable attach resistor
   usbConfiguration = 0
-  udien = (1'u8 shl eorste) or (1'u8 shl sofe)
+  udien.set eorste, sofe
   sei()
 
 proc usbConfigured*(): uint8 = usb_configuration
@@ -296,7 +323,7 @@ proc usbKeyboardSend*(): int8 =
   var timeout = udfnuml + 50
   while true:
     # are we ready to transmit?
-    if (ueintx and uint8(1 shl rwal)) != 0: break
+    if ueintx.check rwal: break
     sreg = intr_state
     # has the USB gone offline?
     if usb_configuration == 0: return -1
@@ -321,18 +348,18 @@ proc deviceInterrupt() {.codegenDecl: "ISR(USB_GEN_vect)", exportc.} =
     div4 {.global.} = 0'u8
   intbits = udint
   udint = 0
-  if (intbits and (1'u8 shl eorsti)) != 0:
+  if intbits.check eorsti:
     uenum = 0
     ueconx = 1
     uecfg0x = EP_TYPE_CONTROL
     uecfg1x = EP_SIZE(ENDPOINT0_SIZE) or EP_SINGLE_BUFFER
-    ueienx = 1'u8 shl rxstpe
+    ueienx.set rxstpe
     usbConfiguration = 0
-  if (intbits and (1'u8 shl sofi)) != 0 and usbConfiguration != 0:
+  if intbits.check(sofe) and usbConfiguration != 0:
     inc div4
     if keyboard_idle_config != 0 and ((div4 and 3) == 0):
       uenum = KEYBOARD_ENDPOINT
-      if (ueintx and (1'u8 shl rwal)) != 0:
+      if ueintx.check rwal:
         inc keyboard_idle_count
         if (keyboard_idle_count == keyboard_idle_config):
           keyboard_idle_count = 0
@@ -344,82 +371,65 @@ proc deviceInterrupt() {.codegenDecl: "ISR(USB_GEN_vect)", exportc.} =
 
 # Misc functions to wait for ready and send/receive packets
 template usb_wait_in_ready(): untyped =
-  while (ueintx and (1'u8 shl txini)) == 0: discard
+  while not ueintx.check(txini): discard
 template usb_send_in(): untyped =
-  ueintx = not (1'u8 shl txini)
+  ueintx.unset txini
 template usb_wait_receive_out(): untyped =
-  while (ueintx and (1'u8 shl rxouti)) == 0: discard
+  while not ueintx.check(rxouti): discard
 template usb_ack_out(): untyped =
-  ueintx = not (1'u8 shl rxouti)
+  ueintx.unset rxouti
+
+template doWhile(body, cond: untyped): untyped =
+  var cont = true
+  while cont:
+    body
+    cont = cond
 
 # USB Endpoint Interrupt - endpoint 0 is handled here.  The
 # other endpoints are manipulated by the user-callable
 # functions, and the start-of-frame interrupt.
 proc endpointInterrupt() {.codegenDecl: "ISR(USB_COM_vect)", exportc.} =
-  var
-    intbits: uint8
-    bmRequestType: uint8
-    bRequest: uint8
-    wValue: uint16
-    wIndex: uint16
-    wLength: uint16
-    desc_val: uint16
-    desc_addr: ptr uint8
-    desc_length: uint8
-
   uenum = 0
-  intbits = ueintx
-  if (intbits and (1'u8 shl rxstpi)) != 0:
-    bmRequestType = uedatx
-    bRequest = uedatx
-    wValue = uedatx
-    wValue = wValue or (uedatx.uint16 shl 8'u16)
-    wIndex = uedatx
-    wIndex = wIndex or (uedatx.uint16 shl 8'u16)
-    wLength = uedatx
-    wLength = wLength or (uedatx.uint16 shl 8'u16)
-    ueintx = not ((1'u8 shl rxstpi) or (1'u8 shl rxouti) or (1'u8 shl txini))
+  var intbits = ueintx
+  if intbits.check(rxstpi):
+    var bmRequestType = uedatx
+    var bRequest = uedatx
+    var wValue = uedatx.uint16 or (uedatx.uint16 shl 8'u16)
+    var wIndex = uedatx.uint16 or (uedatx.uint16 shl 8'u16)
+    var wLength = uedatx.uint16 or (uedatx.uint16 shl 8'u16)
+    ueintx.unset rxstpi, rxouti, txini
     if bRequest == GET_DESCRIPTOR:
-      var list = cast[int](descriptor_list)
-      for i in uint8.low..uint8.high:
+      var
+        desc_addr: ptr uint8
+        desc_length: uint8
+      for i in 0..descriptorList.len:
         if i >= NUM_DESC_LIST:
-          ueconx = (1'u8 shl stallrq) or (1'u8 shl epen) # stall
+          ueconx.set stallrq, epen
           return
-        desc_val = pgm_read_word(cast[ptr uint16](list))
-        if desc_val != wValue:
-          list += sizeof(Descriptor)
+        var descVal = descriptorList[i].wValue
+        if descVal != wValue:
           continue
-        list += 2
-        desc_val = pgm_read_word(cast[ptr uint16](list))
-        if desc_val != wIndex:
-          list += sizeof(Descriptor) - 2
+        descVal = descriptorList[i].wIndex
+        if descVal != wIndex:
           continue
-        list += 2
-        desc_addr = cast[ptr uint8](pgm_read_word(cast[ptr uint16](list)))
-        list += 2
-        desc_length = pgm_read_byte(cast[ptr uint8](list))
+        descAddr = descriptorList[i].address
+        descLength = descriptorList[i].length
         break
-      var length = if wLength < 256: wLength else: 255
-      if (length > desc_length): length = desc_length
-      var cont = true
-      while cont:
-        # wait for host ready for IN packet
-        var i = 0'u8
-        block:
-          var
-            cont = true
-          while cont:
-            i = ueintx
-            cont = (i and ((1'u8 shl txini) or (1'u8 shl rxouti))) == 0
-        if (i and (1'u8 shl rxouti)) != 0: return # abort
-        # send IN packet
+      var length = uint8(if wLength < 256: wLength else: 255)
+      if length > desc_length: length = desc_length
+      doWhile:
+        var i: uint8
+        doWhile:
+          i = ueintx
+        do: not i.check(txini, rxouti)
+        if i.check rxouti: return
         var n = if length < ENDPOINT0_SIZE: length else: ENDPOINT0_SIZE
-        for i in countdown(n, 0):
+        for i in countdown(n, 1):
           uedatx = pgm_read_byte(desc_addr)
           desc_addr = cast[ptr uint8](cast[int](desc_addr) + 1)
         length -= n
         usb_send_in()
-        cont = length != 0 or n == ENDPOINT0_SIZE
+      do: length != 0 or n == ENDPOINT0_SIZE
       return
     if bRequest == SET_ADDRESS:
       usb_send_in()
@@ -454,7 +464,7 @@ proc endpointInterrupt() {.codegenDecl: "ISR(USB_COM_vect)", exportc.} =
       when defined(SUPPORT_ENDPOINT_HALT):
         if (bmRequestType == 0x82):
           uenum = uint8(wIndex)
-          if (ueconx and (1'u8 shl stallrq)) != 0:
+          if ueconx.check stallrq:
             i = 1
           uenum = 0
       uedatx = i
@@ -462,7 +472,6 @@ proc endpointInterrupt() {.codegenDecl: "ISR(USB_COM_vect)", exportc.} =
       usb_send_in()
       return
     when defined(SUPPORT_ENDPOINT_HALT):
-      static: echo "Defined!"
       if (bRequest == CLEAR_FEATURE and bRequest == SET_FEATURE) and
           bmRequestType == 0x02 and wValue == 0:
         var i = uint8(wIndex and 0x7F)
@@ -470,11 +479,11 @@ proc endpointInterrupt() {.codegenDecl: "ISR(USB_COM_vect)", exportc.} =
           usb_send_in()
           uenum = i
           if bRequest == SET_FEATURE:
-            ueconx = (1'u8 shl stallrq) or (1'u8 shl epen)
+            ueconx.set stallrq, epen
           else:
-            ueconx = (1'u8 shl stallrqc) or (1'u8 shl rstdt) or (1'u8 shl epen)
-            uerst = 1'u8 shl i
-            uerst = 0'u8
+            ueconx.set stallrqc, rstdt, epen
+            uerst.set i
+            uerst = 0
           return
     if wIndex == KEYBOARD_INTERFACE:
       if bmRequestType == 0xA1:
@@ -512,4 +521,4 @@ proc endpointInterrupt() {.codegenDecl: "ISR(USB_COM_vect)", exportc.} =
           keyboard_protocol = uint8(wValue)
           usb_send_in()
           return
-  ueconx = (1'u8 shl stallrq) or (1'u8 shl epen) # stall
+  ueconx.set stallrq, epen # stall

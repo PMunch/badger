@@ -20,7 +20,7 @@ proc typeAs(times: int) =
     discard usbKeyboardPress(KEY_A, MOD_NONE)
   discard usbKeyboardPress(KEY_SPACE, MOD_NONE)
 
-var layout: uint8 = 0
+var layout: range[0'u8..1'u8] = 0
 
 proc switchLayout(l: uint8) =
   layout = l
@@ -62,7 +62,7 @@ proc main() {.exportc.} =
         delayLoop(1'u8)
         if col.readPin() == 0:
           if i < 6:
-            let key = case range[0..1](layout):
+            let key = case layout:
             of 0: layout1[row*columns.len + col]
             of 1: layout2[row*columns.len + col]
             if key.uint8 > 231:
