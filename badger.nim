@@ -1,4 +1,4 @@
-import teensy, pgmspace, mappings/dvorak, layouts, usbKeyboard
+import teensy, pgmspace, mappings/dvorak, layouts, keyboard
 
 const
   columns = [D5, C7, C6, D3, D2, D1, D0]
