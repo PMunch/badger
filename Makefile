@@ -1,22 +1,22 @@
-badger: badger.nim nim.cfg panicoverride.nim teensy.nim keyboard.nim pgmspace.nim layouts.nim mappings/dvorak.nim mappings/qwerty.nim
-	nim c -d:danger --opt:size --os:any badger
+i2ctest: i2ctest.nim nim.cfg panicoverride.nim teensy.nim i2c.nim mcp23017.nim
+	nim c -d:danger --opt:size --os:any i2ctest
 
-badger.hex: badger
-	avr-objcopy -O ihex -R .eeprom badger badger.hex
+i2ctest.hex: i2ctest
+	avr-objcopy -O ihex -R .eeprom i2ctest i2ctest.hex
 
-size: badger
-	avr-size -C --mcu=atmega32u4 badger
+size: i2ctest
+	avr-size -C --mcu=atmega32u4 i2ctest
 
-size-breakdown: badger
-	avr-size -C --mcu=atmega32u4 badger
+size-breakdown: i2ctest
+	avr-size -C --mcu=atmega32u4 i2ctest
 	@echo ".data section:"
-	avr-nm -S --size-sort badger | grep " [Dd] " || echo "empty"
+	avr-nm -S --size-sort i2ctest | grep " [Dd] " || echo "empty"
 	@echo ""
 	@echo ".bss section:"
-	avr-nm -S --size-sort badger | grep " [Bb] " || echo "empty"
+	avr-nm -S --size-sort i2ctest | grep " [Bb] " || echo "empty"
 	@echo ""
 	@echo ".text section:"
-	avr-nm -S --size-sort badger | grep " [Tt] " || echo "empty"
+	avr-nm -S --size-sort i2ctest | grep " [Tt] " || echo "empty"
 
-upload: badger.hex
-	teensy-loader-cli --mcu=TEENSY2 -v -w badger.hex
+upload: i2ctest.hex
+	teensy-loader-cli --mcu=TEENSY2 -v -w i2ctest.hex

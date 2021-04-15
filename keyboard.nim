@@ -1,5 +1,5 @@
 import mappings/dvorak
-import pgmspace, macros
+import pgmspace, macros, teensy
 
 const
   VENDOR_ID = 0x16C0
@@ -54,28 +54,6 @@ template EP_SIZE(s: untyped): untyped =
 
 template LSB(n: untyped): untyped = n and 255
 template MSB(n: untyped): untyped = (n shr 8) and 255
-
-template expandFlags(flags: untyped): untyped =
-  var flagCollection {.inject.} = newLit(0'u8)
-  for flag in flags:
-    flagCollection = nnkInfix.newTree(newIdentNode("or"),
-      flagCollection, nnkInfix.newTree(newIdentNode("shl"), newLit(1'u8), flag))
-  #echo flagCollection.repr
-
-macro check(x: uint8, flags: varargs[untyped]): untyped =
-  expandFlags(flags)
-  quote do:
-    (`x` and (`flagCollection`)) != 0
-
-macro set(x: uint8, flags: varargs[untyped]): untyped =
-  expandFlags(flags)
-  quote do:
-    `x` = `flagCollection`
-
-macro unset(x: uint8, flags: varargs[untyped]): untyped =
-  expandFlags(flags)
-  quote do:
-    `x` = not `flagCollection`
 
 {.push nodecl, header: "<avr/io.h>".}
 var

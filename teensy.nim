@@ -19,6 +19,20 @@ var
   ddrE* {.importc: "DDRE".}: uint8
   pinE* {.importc: "PINE".}: uint8
 
+  twbr* {.importc: "TWBR".}: uint8
+  twcr* {.importc: "TWCR".}: uint8
+  twsr* {.importc: "TWSR".}: uint8
+  twdr* {.importc: "TWDR".}: uint8
+
+let
+  twint* {.importc: "TWINT".}: uint8
+  twea* {.importc: "TWEA".}: uint8
+  twsta* {.importc: "TWSTA".}: uint8
+  twsto* {.importc: "TWSTO".}: uint8
+  twwc* {.importc: "TWWC".}: uint8
+  twen* {.importc: "TWEN".}: uint8
+  twie* {.importc: "TWIE".}: uint8
+
 template cpuPrescale*(n: static[uint8]): untyped =
   clkpr = 0x80
   clkpr = n
@@ -201,3 +215,26 @@ proc delayUs*(ms: cdouble) {.importc: "_delay_us", header: "<avr/delay.h>".}
 proc delayLoop*(its: uint8) {.importc: "_delay_loop_1", header: "<util/delay_basic.h>".}
 proc delayLoop*(its: uint16) {.importc: "_delay_loop_2", header: "<util/delay_basic.h>".}
 proc millis*(): culong {.importc, nodecl.}
+
+template expandFlags(flags: untyped): untyped =
+  var flagCollection {.inject.} = newLit(0'u8)
+  for flag in flags:
+    flagCollection = nnkInfix.newTree(newIdentNode("or"),
+      flagCollection, nnkInfix.newTree(newIdentNode("shl"), newLit(1'u8), flag))
+  #echo flagCollection.repr
+
+macro check*(x: uint8, flags: varargs[untyped]): untyped =
+  expandFlags(flags)
+  quote do:
+    (`x` and (`flagCollection`)) != 0
+
+macro set*(x: uint8, flags: varargs[untyped]): untyped =
+  expandFlags(flags)
+  quote do:
+    `x` = `flagCollection`
+
+macro unset*(x: uint8, flags: varargs[untyped]): untyped =
+  expandFlags(flags)
+  quote do:
+    `x` = not `flagCollection`
+
