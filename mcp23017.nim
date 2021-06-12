@@ -1,5 +1,5 @@
 import macros
-import teensy, i2c
+import i2c
 export i2c
 
 type
@@ -80,5 +80,55 @@ macro read*(pin: static[ExternalPin]): untyped =
     `bus`.readRegister(`address`, `register`) and (1'u8 shl `num`)
 
 template initMCP23017*(bus: I2c, address: uint8): untyped =
-  bus.init()
+  #bus.init()
   bus.writeRegister(address, 0x0A, 0b1010_0000)
+
+import tables
+
+macro configure*(pins: static[openarray[ExternalPin]], states: varargs[untyped]): untyped =
+  result = newStmtList()
+  var busAddressedPorts: Table[I2C, Table[uint8, Table[char, seq[int]]]]
+  for pin in pins:
+    busAddressedPorts.mgetOrPut(pin.bus, initTable[uint8, Table[char, seq[int]]]()).mgetOrPut(pin.address, initTable[char, seq[int]]()).mgetOrPut(pin.port, @[]).add pin.num
+  for state in states:
+    expectKind state, nnkIdent
+    for bus, addressedPorts in busAddressedPorts:
+      for address, ports in addressedPorts:
+        for portName, pins in ports.pairs:
+          var valueMask = newLit(0)
+          for pin in pins:
+            valueMask = quote do:
+              `valueMask` or (1'u8 shl `pin`)
+          case state.strVal:
+          of "input":
+            let register = newLit(0x00'u8 or (if portName == 'A': 0'u8 else: 0x10'u8))
+            result.add quote do:
+              let port = `bus`.readRegister(`address`, `register`)
+              `bus`.writeRegister(`address`, `register`, port or `valueMask`)
+          of "output":
+            let register = newLit(0x00'u8 or (if portName == 'A': 0'u8 else: 0x10'u8))
+            result.add quote do:
+              let port = `bus`.readRegister(`address`, `register`)
+              `bus`.writeRegister(`address`, `register`, port and not `valueMask`)
+          of "pullup":
+            let register = newLit(0x06'u8 or (if portName == 'A': 0'u8 else: 0x10'u8))
+            result.add quote do:
+              let port = `bus`.readRegister(`address`, `register`)
+              `bus`.writeRegister(`address`, `register`, port or `valueMask`)
+          of "normal":
+            let register = newLit(0x06'u8 or (if portName == 'A': 0'u8 else: 0x10'u8))
+            result.add quote do:
+              let port = `bus`.readRegister(`address`, `register`)
+              `bus`.writeRegister(`address`, `register`, port and not `valueMask`)
+          of "high":
+            let register = newLit(0x0A'u8 or (if portName == 'A': 0'u8 else: 0x10'u8))
+            result.add quote do:
+              let port = `bus`.readRegister(`address`, `register`)
+              `bus`.writeRegister(`address`, `register`, port or `valueMask`)
+          of "low":
+            let register = newLit(0x0A'u8 or (if portName == 'A': 0'u8 else: 0x10'u8))
+            result.add quote do:
+              let port = `bus`.readRegister(`address`, `register`)
+              `bus`.writeRegister(`address`, `register`, port and not `valueMask`)
+          else: doAssert state.strVal in ["input", "output", "pullup", "normal", "high", "low"]
+  #echo result.repr

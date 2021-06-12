@@ -1,7 +1,10 @@
-import teensy
+import teensy, hashes
 
 type I2C* = object
 const I2CBus* = I2C()
+
+proc hash*(bus: I2C): Hash =
+  Hash(0)
 
 proc init*(bus: static[I2c]) =
   # SCL frequence = CPU frequency / (16 + (2 * TWBR * prescaler))
@@ -16,7 +19,8 @@ proc start*(_: static[I2c]) =
 
 proc stop*(_: static[I2c]) {.noinline.} =
   twcr.set twen, twint, twsto
-  delayUs(100)
+  delayLoop(1'u8)
+  #delayUs(100)
 
 proc send*(_: static[I2c], data: uint8) =
   twdr = data

@@ -74,6 +74,7 @@ macro progmem*(definitions: untyped): untyped =
     else: discard
     result.add quote do:
       # Stupid workaround for https://github.com/nim-lang/Nim/issues/17497
-      let `hiddenName` {.codegenDecl: "N_LIB_PRIVATE NIM_CONST $# PROGMEM $#".}: `dataType` = `data`
+      # const instead of NIM_CONST because of C++
+      let `hiddenName` {.codegenDecl: "N_LIB_PRIVATE const $# PROGMEM $#".}: `dataType` = `data`
       template `name`*(): untyped = Progmem(`hiddenName`)
-  #echo result.repr
+  echo result.repr

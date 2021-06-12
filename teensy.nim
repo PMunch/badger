@@ -162,12 +162,12 @@ macro configure*(pins: static[openarray[Pin]], states: varargs[untyped]): untype
       else: doAssert state.strVal in ["input", "output", "pullup", "normal", "high", "low"]
   #echo result.repr
 
-macro generateCaseStmt(pins: static[openarray[Pin]], pinsname: untyped, iterVar: untyped, states: varargs[untyped]): untyped =
+macro generateCaseStmt(pinsCount: static[int], pinsname: untyped, iterVar: untyped, states: varargs[untyped]): untyped =
   result = quote do:
     case range[0..`pinsname`.high](`iterVar`):
     else: discard
   result.del 1
-  for i in 0..pins.high:
+  for i in 0..pinsCount:
     var body = newStmtList()
     for state in states:
       body.add quote do:
@@ -185,9 +185,9 @@ macro withPinAs*(loop: ForLoopStmt): untyped =
     iterVarType = genSym(nskType)
   var
     generateSym = bindSym("generateCaseStmt")
-    generateInStmt = nnkCall.newTree(generateSym, pins, pins, iterVar)
-    generateOutStmt = nnkCall.newTree(generateSym, pins, pins, iterVar)
-    generateReadStmt = nnkCall.newTree(generateSym, pins, pins, iterVar, newIdentNode("read"))
+    generateInStmt = nnkCall.newTree(generateSym, newCall("high", pins), pins, iterVar)
+    generateOutStmt = nnkCall.newTree(generateSym, newCall("high", pins), pins, iterVar)
+    generateReadStmt = nnkCall.newTree(generateSym, newCall("high", pins), pins, iterVar, newIdentNode("read"))
   for state in states:
     generateInStmt.add state
     generateOutStmt.add:

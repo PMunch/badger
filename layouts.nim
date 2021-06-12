@@ -1,8 +1,9 @@
-import macros
+import macros, sets, mappings/dvorak, hashes
 
-var
-  callbackId {.compileTime.} = 231
-  callbacks {.compileTime.}: seq[NimNode]
+var callbacks {.compileTime.}: OrderedSet[NimNode]
+
+proc hash(n: NimNode): Hash =
+  hash(n.treeRepr)
 
 macro expandKey(key: typed): untyped =
   #echo key.treeRepr
@@ -15,13 +16,20 @@ macro expandKey(key: typed): untyped =
   #      Key(`callbackId`)
   #  else:
   #    key
-  if key.kind != nnkSym:
-    inc callbackId
-    callbacks.add key
+  result = if key.kind != nnkSym:
+    callbacks.incl key
+    var callbackId: int
+    for i, callback in callbacks:
+      if callback == key:
+        callbackId = 232 + i
+        break
     quote do:
       Key(`callbackId`)
   else:
     key
+  echo result.repr
+  for callback in callbacks:
+    echo callback.repr
 
 #macro generateCallbacks(startId: int): untyped =
 
@@ -40,7 +48,6 @@ macro layoutCallback*(key: untyped): untyped =
   #echo result.repr
 
 macro createLayout*(name: untyped, x: untyped): untyped =
-  let startCallbacks = callbackId
   result = newStmtList()
   #echo x.treeRepr
   var keys = nnkBracket.newTree()
@@ -66,5 +73,11 @@ macro createLayout*(name: untyped, x: untyped): untyped =
   result = quote do:
     progmem:
       `name` = `keys`
-    #generateCallbacks(`startCallbacks`)
-  #echo result.repr
+  echo result.repr
+
+template callback*(key: Key): bool =
+  if key.uint8 > 231:
+    layoutCallback(key)
+    true
+  else:
+    false
