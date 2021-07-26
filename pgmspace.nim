@@ -9,6 +9,26 @@ proc pgmReadDoubleWord*[T](address: ptr T): uint32 {.importc: "pgm_read_dword".}
 proc memcpyPgm*[T](dest: ptr T, src: ptr T, size: csize_t): ptr T {.importc: "memcpy_P".}
 {.pop.}
 
+proc `[]`*[T](src: ptr Progmem[T]): T {.noinit.} =
+    when sizeof(T) == 1:
+      result = cast[T](pgmReadByte(cast[ptr T](src)))
+    elif sizeof(T) == 2:
+      result = cast[T]( pgmReadWord(cast[ptr T](src)))
+    elif sizeof(T) == 4:
+      result = cast[T](pgmReadDoubleWord(cast[ptr T](src)))
+    else:
+      discard memcpyPgm(result.addr, cast[ptr T](src), sizeof(T).csize_t)
+
+proc readInto*[T](dst: var T, src: Progmem[T]) =
+    when sizeof(T) == 1:
+      dst = cast[T](pgmReadByte(cast[ptr T](src.unsafeAddr)))
+    elif sizeof(T) == 2:
+      dst = cast[T]( pgmReadWord(cast[ptr T](src.unsafeAddr)))
+    elif sizeof(T) == 4:
+      dst = cast[T](pgmReadDoubleWord(cast[ptr T](src.unsafeAddr)))
+    else:
+      discard memcpyPgm(dst.addr, cast[ptr T](src.unsafeAddr), sizeof(T).csize_t)
+
 template read*[T](data: Progmem[T]): T =
   cast[T](
     when sizeof(T) == 1:
