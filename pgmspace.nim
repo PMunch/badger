@@ -18,8 +18,10 @@ template read*[T](data: Progmem[T]): T =
     elif sizeof(T) == 4:
       pgmReadDoubleWord(cast[ptr T](data.unsafeAddr))
     else:
-      var x: T
-      memcpyPgm(x.addr, cast[ptr T](data.unsafeAddr), sizeof(T).csize_t)[])
+      var x {.noInit.} : T
+      discard memcpyPgm(x.addr, cast[ptr T](data.unsafeAddr), sizeof(T).csize_t)
+      x
+  )
 
 template len*[N, T](data: Progmem[array[N, T]]): untyped =
   array[N, T](data).len
@@ -49,8 +51,10 @@ macro createFieldReaders*(obj: typed): untyped =
           elif sizeof(`kind`) == 4:
             pgmReadDoubleWord(cast[ptr uint32](cast[int](x.unsafeAddr) + `obj`.offsetof(`name`)))
           else:
-            var x: T
-            memcpyPgm(x.addr, cast[ptr T](data.unsafeAddr), sizeof(T).csize_t)[])
+            var x {.noInit.} : T
+            discard memcpyPgm(x.addr, cast[ptr T](data.unsafeAddr), sizeof(T).csize_t)[]
+            x
+          )
 
 macro progmem*(definitions: untyped): untyped =
   #echo definitions.treeRepr
