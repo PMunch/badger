@@ -1,4 +1,4 @@
-import macros
+import macros, hashes
 import i2c
 export i2c
 
@@ -6,34 +6,42 @@ type
   ExternalPin* = object
     bus: I2c
     address: uint8
-    port: char
+    port: ExternalPort
     num: int
+  ExternalPort* = distinct uint8
 
-proc pin(address: uint8, bus: I2c, port: char, num: int): ExternalPin {.compileTime.} =
+proc `==`(a, b: ExternalPort): bool {.borrow.}
+proc `hash`(a: ExternalPort): Hash {.borrow.}
+
+proc pin(address: uint8, bus: I2c, port: ExternalPort, num: int): ExternalPin {.compileTime.} =
   ExternalPin(address: address, port: port, num: num)
+
+const
+  PortA* = ExternalPort(0x00'u8)
+  PortB* = ExternalPort(0x10'u8)
 
 template defineMCP23017*(address: uint8, bus: I2c, prefix: untyped): untyped =
   const
-    `prefix A0`* {.inject.} = pin(address, bus, 'A', 0)
-    `prefix A1`* {.inject.} = pin(address, bus, 'A', 1)
-    `prefix A2`* {.inject.} = pin(address, bus, 'A', 2)
-    `prefix A3`* {.inject.} = pin(address, bus, 'A', 3)
-    `prefix A4`* {.inject.} = pin(address, bus, 'A', 4)
-    `prefix A5`* {.inject.} = pin(address, bus, 'A', 5)
-    `prefix A6`* {.inject.} = pin(address, bus, 'A', 6)
-    `prefix A7`* {.inject.} = pin(address, bus, 'A', 7)
-    `prefix B0`* {.inject.} = pin(address, bus, 'B', 0)
-    `prefix b1`* {.inject.} = pin(address, bus, 'B', 1)
-    `prefix B2`* {.inject.} = pin(address, bus, 'B', 2)
-    `prefix B3`* {.inject.} = pin(address, bus, 'B', 3)
-    `prefix B4`* {.inject.} = pin(address, bus, 'B', 4)
-    `prefix B5`* {.inject.} = pin(address, bus, 'B', 5)
-    `prefix B6`* {.inject.} = pin(address, bus, 'B', 6)
-    `prefix B7`* {.inject.} = pin(address, bus, 'B', 7)
+    `prefix A0`* {.inject.} = pin(address, bus, PortA, 0)
+    `prefix A1`* {.inject.} = pin(address, bus, PortA, 1)
+    `prefix A2`* {.inject.} = pin(address, bus, PortA, 2)
+    `prefix A3`* {.inject.} = pin(address, bus, PortA, 3)
+    `prefix A4`* {.inject.} = pin(address, bus, PortA, 4)
+    `prefix A5`* {.inject.} = pin(address, bus, PortA, 5)
+    `prefix A6`* {.inject.} = pin(address, bus, PortA, 6)
+    `prefix A7`* {.inject.} = pin(address, bus, PortA, 7)
+    `prefix B0`* {.inject.} = pin(address, bus, PortB, 0)
+    `prefix b1`* {.inject.} = pin(address, bus, PortB, 1)
+    `prefix B2`* {.inject.} = pin(address, bus, PortB, 2)
+    `prefix B3`* {.inject.} = pin(address, bus, PortB, 3)
+    `prefix B4`* {.inject.} = pin(address, bus, PortB, 4)
+    `prefix B5`* {.inject.} = pin(address, bus, PortB, 5)
+    `prefix B6`* {.inject.} = pin(address, bus, PortB, 6)
+    `prefix B7`* {.inject.} = pin(address, bus, PortB, 7)
 
 template expandRegister(registerAddress: uint8): untyped {.dirty.} =
   let
-    register = newLit(registerAddress or (if pin.port == 'A': 0'u8 else: 0x10'u8))
+    register = newLit(registerAddress or uint8(pin.port))
     address = newLit(pin.address)
     num = newLit(pin.num)
     bus = newLit(pin.bus)
@@ -87,9 +95,9 @@ import tables
 
 macro configure*(pins: static[openarray[ExternalPin]], states: varargs[untyped]): untyped =
   result = newStmtList()
-  var busAddressedPorts: Table[I2C, Table[uint8, Table[char, seq[int]]]]
+  var busAddressedPorts: Table[I2C, Table[uint8, Table[ExternalPort, seq[int]]]]
   for pin in pins:
-    busAddressedPorts.mgetOrPut(pin.bus, initTable[uint8, Table[char, seq[int]]]()).mgetOrPut(pin.address, initTable[char, seq[int]]()).mgetOrPut(pin.port, @[]).add pin.num
+    busAddressedPorts.mgetOrPut(pin.bus, initTable[uint8, Table[ExternalPort, seq[int]]]()).mgetOrPut(pin.address, initTable[ExternalPort, seq[int]]()).mgetOrPut(pin.port, @[]).add pin.num
   for state in states:
     expectKind state, nnkIdent
     for bus, addressedPorts in busAddressedPorts:
@@ -101,32 +109,32 @@ macro configure*(pins: static[openarray[ExternalPin]], states: varargs[untyped])
               `valueMask` or (1'u8 shl `pin`)
           case state.strVal:
           of "input":
-            let register = newLit(0x00'u8 or (if portName == 'A': 0'u8 else: 0x10'u8))
+            let register = newLit(0x00'u8 or uint8(portName))
             result.add quote do:
               let port = `bus`.readRegister(`address`, `register`)
               `bus`.writeRegister(`address`, `register`, port or `valueMask`)
           of "output":
-            let register = newLit(0x00'u8 or (if portName == 'A': 0'u8 else: 0x10'u8))
+            let register = newLit(0x00'u8 or uint8(portName))
             result.add quote do:
               let port = `bus`.readRegister(`address`, `register`)
               `bus`.writeRegister(`address`, `register`, port and not `valueMask`)
           of "pullup":
-            let register = newLit(0x06'u8 or (if portName == 'A': 0'u8 else: 0x10'u8))
+            let register = newLit(0x06'u8 or uint8(portName))
             result.add quote do:
               let port = `bus`.readRegister(`address`, `register`)
               `bus`.writeRegister(`address`, `register`, port or `valueMask`)
           of "normal":
-            let register = newLit(0x06'u8 or (if portName == 'A': 0'u8 else: 0x10'u8))
+            let register = newLit(0x06'u8 or uint8(portName))
             result.add quote do:
               let port = `bus`.readRegister(`address`, `register`)
               `bus`.writeRegister(`address`, `register`, port and not `valueMask`)
           of "high":
-            let register = newLit(0x0A'u8 or (if portName == 'A': 0'u8 else: 0x10'u8))
+            let register = newLit(0x0A'u8 or uint8(portName))
             result.add quote do:
               let port = `bus`.readRegister(`address`, `register`)
               `bus`.writeRegister(`address`, `register`, port or `valueMask`)
           of "low":
-            let register = newLit(0x0A'u8 or (if portName == 'A': 0'u8 else: 0x10'u8))
+            let register = newLit(0x0A'u8 or uint8(portName))
             result.add quote do:
               let port = `bus`.readRegister(`address`, `register`)
               `bus`.writeRegister(`address`, `register`, port and not `valueMask`)
