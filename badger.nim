@@ -1,4 +1,4 @@
-import teensy except F1, F4, F5, F6, F7
+import teensy except F1, F4, F5, F6, F7, D
 import pgmspace, mappings/dvorak, layouts, keyboard, mcp23017
 
 const
@@ -83,7 +83,7 @@ proc main(): cint {.exportc.} =
   usbInit()
   while usbConfigured() == 0: discard
 
-  delayMs(1000)
+  #delayMs(1000)
 
   I2Cbus.initMCP23017(portexRight)
   rowsR.configure(input, pullup)
@@ -97,16 +97,24 @@ proc main(): cint {.exportc.} =
     var i = 0
     reset keyboardKeys
     reset keyboardModifierKeys
-    for row in withPinAs(rowsL, output, low):
-      for col in withPinAs(columnsL, pullup):
-        delayLoop(1'u8)
-        if col.readPin() == 0:
+
+    for row in rowsL.low..rowsL.high:
+      LPortB.output(1'u8 shl (7 - row))
+      LPortB.low(1'u8 shl (7 - row))
+      delayLoop(1'u8)
+      let data = LPortA.read()
+      for col in columnsL.low..columnsL.high:
+        if data[col] == 0:
           if i < 6:
             handleForLayout(i, row*columnsL.len + col, true)
-    for row in withPinAs(rowsR, output, low):
-      for col in withPinAs(columnsR, pullup):
-        delayLoop(1'u8)
-        if col.readPin() == 0:
+    for row in rowsR.low..rowsR.high:
+      RPortB.output(1'u8 shl (3 + row))
+      RPortB.low(1'u8 shl (3 + row))
+      delayLoop(1'u8)
+      let data = RPortA.read()
+      for col in columnsR.low..columnsR.high:
+        if data[col] == 0:
           if i < 6:
             handleForLayout(i, row*columnsR.len + col, false)
+
     discard usbKeyboardSend()

@@ -38,14 +38,23 @@ template cpuPrescale*(n: static[uint8]): untyped =
   clkpr = n
 {.pop.}
 
-type Pin = object
-  port: char
-  num: int
+type
+  Teensy = object
+  Port = object
+    device: Teensy
+    portChar: char
+  Pin = object
+    port: Port
+    num: int
+
+const this = Teensy()
 
 proc pin(port: char, num: int): Pin {.compileTime.} =
-  Pin(port: port, num: num)
+  Pin(port: Port(portChar: port), num: num)
+  #Pin(port: port, num: num)
 
 const
+  D* = Port(portChar: 'D')
   B0* = pin('B', 0)
   B1* = pin('B', 1)
   B2* = pin('B', 2)
@@ -83,50 +92,119 @@ macro eachIt*(pins: static[openArray[Pin]], body: untyped): untyped =
         `body`
 
 template expandPin(register: string): untyped {.dirty.} =
-  var
-    port = newIdentNode(register & $pin.port)
+  let
+    port = newIdentNode(register & $pin.port.portChar)
     num = newLit(pin.num)
 
-macro output*(pin: static[Pin]): untyped =
-  expandPin("ddr")
+template expandPort(register: string): untyped {.dirty.} =
+  let portReg = newIdentNode(register & $port.portChar)
+
+# TODO: Rewrite to work on device object
+
+macro direction*(port: static[Port]): untyped =
+  expandPort("ddr")
   quote do:
-    `port` = `port` or (1'u8 shl `num`)
+    `portReg`
+
+macro direction*(pin: static[Pin]): untyped =
+  #expandPin("ddr")
+  let
+    port = pin.port
+    mask = newLit(1'u8 shl pin.num)
+  quote do:
+    direction(`port`) and `mask`
+
+macro state*(port: static[Port]): untyped =
+  expandPort("port")
+  quote do:
+    `portReg`
+
+macro state*(pin: static[Pin]): untyped =
+  #expandPin("ddr")
+  let
+    port = pin.port
+    mask = newLit(1'u8 shl pin.num)
+  quote do:
+    state(`port`) and `mask`
+
+macro output*(port: static[Port], mask = 0xff'u8): untyped =
+  expandPort("ddr")
+  quote do:
+    `portReg` = `mask`
+
+macro output*(pin: static[Pin]): untyped =
+  let
+    port = pin.port
+    mask = newLit(1'u8 shl pin.num)
+  quote do:
+    output(`port`, direction(`port`) or `mask`)
+
+macro high*(port: static[Port], mask = 0xff'u8): untyped =
+  expandPort("port")
+  quote do:
+    `portReg` = `mask`
 
 macro high*(pin: static[Pin]): untyped =
-  expandPin("port")
+  let
+    port = pin.port
+    mask = newLit(1'u8 shl pin.num)
   quote do:
-    `port` = `port` or (1'u8 shl `num`)
+    high(`port`, state(`port`) or `mask`)
+
+macro low*(port: static[Port], mask = 0xff'u8): untyped =
+  expandPort("port")
+  quote do:
+    `portReg` = `mask`
 
 macro low*(pin: static[Pin]): untyped =
-  expandPin("port")
+  let
+    port = pin.port
+    mask = newLit(1'u8 shl pin.num)
   quote do:
-    `port` = `port` and not (1'u8 shl `num`)
+    low(`port`, state(`port`) and not `mask`)
+
+macro input*(port: static[Port], mask = 0xff'u8): untyped =
+  expandPort("ddr")
+  quote do:
+    `portReg` = `mask`
 
 macro input*(pin: static[Pin]): untyped =
-  expandPin("ddr")
+  let
+    port = pin.port
+    mask = newLit(1'u8 shl pin.num)
   quote do:
-    `port` = `port` and not (1'u8 shl `num`)
+    input(`port`, direction(`port`) and not `mask`)
 
-macro normal*(pin: static[Pin]): untyped =
-  expandPin("port")
-  quote do:
-    `port` = `port` and not (1'u8 shl `num`)
+template normal*(port: static[Port], mask = 0xff'u8): untyped =
+  low(port, mask)
 
-macro pullup*(pin: static[Pin]): untyped =
-  expandPin("port")
+template normal*(pin: static[Pin]): untyped =
+  low(pin)
+
+template pullup*(port: static[Port], mask = 0xff'u8): untyped =
+  high(port, mask)
+
+template pullup*(pin: static[Pin]): untyped =
+  high(pin)
+
+macro read*(port: static[Port]): untyped =
+  expandPort("pin")
   quote do:
-    `port` = `port` or (1'u8 shl `num`)
+    `portReg`
 
 macro read*(pin: static[Pin]): untyped =
-  expandPin("pin")
+  let
+    port = pin.port
+    mask = newLit(1'u8 shl pin.num)
   quote do:
-    `port` and (1'u8 shl `num`)
+    read(`port`) and `mask`
 
+# TODO: Rewrite to use the Port versions above
 macro configure*(pins: static[openarray[Pin]], states: varargs[untyped]): untyped =
   result = newStmtList()
   var ports: Table[char, seq[int]]
   for pin in pins:
-    ports.mgetOrPut(pin.port, @[]).add pin.num
+    ports.mgetOrPut(pin.port.portChar, @[]).add pin.num
   for state in states:
     expectKind state, nnkIdent
     for portName, pins in ports.pairs:

@@ -1,9 +1,9 @@
 import teensy, hashes
 
-type I2C* = object
-const I2CBus* = I2C()
+type I2c* = object
+const I2cBus* = I2c()
 
-proc hash*(bus: I2C): Hash =
+proc hash*(bus: I2c): Hash =
   Hash(0)
 
 proc init*(bus: static[I2c]) =
