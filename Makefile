@@ -1,4 +1,4 @@
-badger: badger.nim nim.cfg panicoverride.nim teensy.nim keyboard.nim pgmspace.nim layouts.nim mappings/dvorak.nim mappings/qwerty.nim mcp23017.nim
+badger: badger.nim nim.cfg teensy.nim keyboard.nim pgmspace.nim layouts.nim mappings/dvorak.nim mappings/qwerty.nim mcp23017.nim
 	nim c -d:danger --opt:size --os:any badger
 
 badger.hex: badger
