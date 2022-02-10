@@ -1,5 +1,5 @@
-import teensy except F1, F4, F5, F6, F7, D
-import pgmspace, mappings/dvorak, layouts, keyboard, mcp23017
+import board except F1, F4, F5, F6, F7, D, E, F, C, B
+import board / [times, progmem], mappings/dvorak, layouts, keyboard, mcp23017
 
 const
   portexLeft  = 0b0100_0000'u8
@@ -85,11 +85,11 @@ proc main(): cint {.exportc.} =
 
   #delayMs(1000)
 
-  I2Cbus.initMCP23017(portexRight)
+  LDevice.init()
   rowsR.configure(input, pullup)
   columnsR.configure(input, pullup)
 
-  I2Cbus.initMCP23017(portexLeft)
+  RDevice.init()
   rowsL.configure(input, pullup)
   columnsL.configure(input, pullup)
 

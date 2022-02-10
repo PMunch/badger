@@ -1,5 +1,5 @@
 import macros, hashes
-import i2c
+import board/i2c
 export i2c
 
 type
@@ -168,9 +168,9 @@ macro read*(pin: static[ExternalPin]): untyped =
   quote do:
     `port`.read().raw and `mask`
 
-template initMCP23017*(bus: I2c, address: uint8): untyped =
+template init*(device: Mcp23017Device): untyped =
   #bus.init()
-  bus.writeRegister(address, 0x0A, 0b1010_0000)
+  device.bus.writeRegister(device.address, 0x0A, 0b1010_0000)
 
 import tables
 

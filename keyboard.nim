@@ -1,5 +1,5 @@
 import mappings/dvorak
-import pgmspace, macros, teensy
+import board/progmem, macros, board
 
 const
   VENDOR_ID = 0x16C0
